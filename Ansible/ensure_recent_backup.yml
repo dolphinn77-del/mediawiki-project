@@ -1,0 +1,116 @@
+---
+- name: Ensure recent MediaWiki database backup
+  hosts: backup-01
+  gather_facts: false
+  become: true
+
+  vars:
+    backup_dir: /srv/backups/postgresql
+    startup_backup_max_age: 82800
+
+  tasks:
+    - name: Wait for primary PostgreSQL
+      ansible.builtin.wait_for:
+        host: 10.50.0.31
+        port: 5432
+        connect_timeout: 5
+        timeout: 90
+
+    - name: Read current backup age
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          latest_mtime="$(
+            find "{{ backup_dir }}" \
+              -maxdepth 1 \
+              -type f \
+              -name 'my_wiki_*.dump' \
+              -printf '%T@\n' 2>/dev/null |
+            sort -nr |
+            head -n 1
+          )"
+
+          if [[ -z "$latest_mtime" ]]; then
+            echo 999999999
+            exit 0
+          fi
+
+          latest_mtime="${latest_mtime%.*}"
+          age=$(($(date +%s) - latest_mtime))
+
+          if ((age < 0)); then
+            age=0
+          fi
+
+          echo "$age"
+      register: backup_age_before
+      changed_when: false
+
+    - name: Create catch-up database backup
+      ansible.builtin.command:
+        cmd: /usr/local/sbin/backup_db.sh
+      register: backup_run
+      when:
+        - backup_age_before.stdout | int > startup_backup_max_age
+
+    - name: Read resulting backup
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          latest="$(
+            find "{{ backup_dir }}" \
+              -maxdepth 1 \
+              -type f \
+              -name 'my_wiki_*.dump' \
+              -printf '%T@ %s %p\n' 2>/dev/null |
+            sort -nr |
+            head -n 1
+          )"
+
+          if [[ -z "$latest" ]]; then
+            echo "999999999 0 MISSING"
+            exit 0
+          fi
+
+          mtime="${latest%% *}"
+          remainder="${latest#* }"
+          size="${remainder%% *}"
+          path="${remainder#* }"
+          mtime="${mtime%.*}"
+          age=$(($(date +%s) - mtime))
+
+          if ((age < 0)); then
+            age=0
+          fi
+
+          printf '%s %s %s\n' "$age" "$size" "$path"
+      register: resulting_backup
+      changed_when: false
+
+    - name: Save resulting backup information
+      ansible.builtin.set_fact:
+        resulting_age: "{{ resulting_backup.stdout.split()[0] | int }}"
+        resulting_size: "{{ resulting_backup.stdout.split()[1] | int }}"
+        resulting_path: "{{ resulting_backup.stdout.split()[2] }}"
+
+    - name: Verify resulting backup
+      ansible.builtin.assert:
+        that:
+          - resulting_age | int < startup_backup_max_age
+          - resulting_size | int > 0
+          - resulting_path != "MISSING"
+        success_msg: "Актуальная резервная копия подтверждена"
+        fail_msg: "Свежая резервная копия не создана"
+
+    - name: Show backup result
+      ansible.builtin.debug:
+        msg:
+          action: >-
+            {{
+              'Создана новая копия'
+              if backup_run is changed
+              else 'Используется существующая свежая копия'
+            }}
+          path: "{{ resulting_path }}"
+          size_bytes: "{{ resulting_size }}"
+          age_seconds: "{{ resulting_age }}"

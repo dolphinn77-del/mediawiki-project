@@ -1,0 +1,208 @@
+---
+- name: Configure MediaWiki HTTP monitoring in Zabbix
+  hosts: monitoring
+  gather_facts: false
+
+  vars:
+    api_url: "http://127.0.0.1/api_jsonrpc.php"
+    monitor_group: "MediaWiki"
+    monitor_host: "MediaWiki Service"
+    scenario_name: "MediaWiki HTTP"
+
+  tasks:
+    - name: Login to Zabbix API
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+        body:
+          jsonrpc: "2.0"
+          method: user.login
+          params:
+            username: Admin
+            password: "{{ zabbix_admin_password }}"
+          id: 1
+      register: api_login
+      failed_when: api_login.json.error is defined
+      no_log: true
+
+    - name: Save API token
+      ansible.builtin.set_fact:
+        api_token: "{{ api_login.json.result }}"
+      no_log: true
+
+    - name: Find MediaWiki host group
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: hostgroup.get
+          params:
+            output:
+              - groupid
+              - name
+            filter:
+              name:
+                - "{{ monitor_group }}"
+          id: 2
+      register: group_get
+      failed_when: group_get.json.error is defined
+
+    - name: Create MediaWiki host group
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: hostgroup.create
+          params:
+            name: "{{ monitor_group }}"
+          id: 3
+      register: group_create
+      when: group_get.json.result | length == 0
+      changed_when: true
+      failed_when: group_create.json.error is defined
+
+    - name: Set MediaWiki group ID
+      ansible.builtin.set_fact:
+        mediawiki_groupid: >-
+          {{
+            group_get.json.result[0].groupid
+            if group_get.json.result | length > 0
+            else group_create.json.result.groupids[0]
+          }}
+
+    - name: Find MediaWiki monitoring host
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: host.get
+          params:
+            output:
+              - hostid
+              - host
+            filter:
+              host:
+                - "{{ monitor_host }}"
+          id: 4
+      register: host_get
+      failed_when: host_get.json.error is defined
+
+    - name: Create MediaWiki monitoring host
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: host.create
+          params:
+            host: "{{ monitor_host }}"
+            groups:
+              - groupid: "{{ mediawiki_groupid }}"
+          id: 5
+      register: host_create
+      when: host_get.json.result | length == 0
+      changed_when: true
+      failed_when: host_create.json.error is defined
+
+    - name: Set MediaWiki host ID
+      ansible.builtin.set_fact:
+        mediawiki_hostid: >-
+          {{
+            host_get.json.result[0].hostid
+            if host_get.json.result | length > 0
+            else host_create.json.result.hostids[0]
+          }}
+
+    - name: Find MediaWiki web scenario
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: httptest.get
+          params:
+            output:
+              - httptestid
+              - name
+            hostids:
+              - "{{ mediawiki_hostid }}"
+            filter:
+              name:
+                - "{{ scenario_name }}"
+          id: 6
+      register: scenario_get
+      failed_when: scenario_get.json.error is defined
+
+    - name: Create MediaWiki web scenario
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: httptest.create
+          params:
+            name: "{{ scenario_name }}"
+            hostid: "{{ mediawiki_hostid }}"
+            delay: "1m"
+            retries: 2
+            steps:
+              - name: "Homepage"
+                "no": 1
+                url: "http://10.50.0.10/"
+                status_codes: "200"
+                follow_redirects: 1
+                timeout: "10s"
+                headers:
+                  - name: Host
+                    value: "158.160.209.54"
+          id: 7
+      register: scenario_create
+      when: scenario_get.json.result | length == 0
+      changed_when: true
+      failed_when: scenario_create.json.error is defined
+
+    - name: Confirm monitoring configuration
+      ansible.builtin.debug:
+        msg:
+          - "Host: {{ monitor_host }}"
+          - "Scenario: {{ scenario_name }}"
+          - "Interval: 1 minute"
+          - "Expected final HTTP status: 200"
+          - "Monitoring configured successfully"

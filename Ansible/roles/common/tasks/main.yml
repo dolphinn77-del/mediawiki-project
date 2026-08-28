@@ -1,0 +1,32 @@
+---
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: Update APT cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install common packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - wget
+      - rsync
+      - unzip
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - net-tools
+      - dnsutils
+      - vim
+      - htop
+      - acl
+    state: present
+
+- name: Ensure time synchronization service is enabled
+  ansible.builtin.service:
+    name: systemd-timesyncd
+    state: started
+    enabled: true

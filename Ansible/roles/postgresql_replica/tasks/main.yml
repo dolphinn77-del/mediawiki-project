@@ -1,0 +1,85 @@
+---
+- name: Check whether replica is already initialized
+  ansible.builtin.stat:
+    path: "/var/lib/postgresql/{{ postgresql_version }}/main/standby.signal"
+  register: standby_signal
+
+- name: Configure replication password file
+  ansible.builtin.copy:
+    dest: /var/lib/postgresql/.pgpass
+    owner: postgres
+    group: postgres
+    mode: "0600"
+    content: "{{ postgres_primary_ip }}:5432:replication:{{ replication_user }}:{{ replication_password }}\n"
+  no_log: true
+
+- name: Stop PostgreSQL before replica initialization
+  ansible.builtin.service:
+    name: postgresql
+    state: stopped
+  when: not standby_signal.stat.exists
+
+- name: Remove existing PostgreSQL data directory
+  ansible.builtin.file:
+    path: "/var/lib/postgresql/{{ postgresql_version }}/main"
+    state: absent
+  when: not standby_signal.stat.exists
+
+- name: Recreate PostgreSQL data directory
+  ansible.builtin.file:
+    path: "/var/lib/postgresql/{{ postgresql_version }}/main"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0700"
+  when: not standby_signal.stat.exists
+
+- name: Clone primary using pg_basebackup
+  ansible.builtin.command:
+    argv:
+      - pg_basebackup
+      - -h
+      - "{{ postgres_primary_ip }}"
+      - -p
+      - "5432"
+      - -U
+      - "{{ replication_user }}"
+      - -D
+      - "/var/lib/postgresql/{{ postgresql_version }}/main"
+      - -Fp
+      - -Xs
+      - -P
+      - -R
+      - -w
+  become_user: postgres
+  when: not standby_signal.stat.exists
+
+- name: Configure replica to listen on network
+  ansible.builtin.lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: '^[# ]*listen_addresses\s*='
+    line: "listen_addresses = '*'"
+
+- name: Allow wiki-01 after replica promotion
+  ansible.builtin.lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
+    line: "host {{ wiki_db_name }} {{ wiki_db_user }} {{ wiki_01_ip }}/32 scram-sha-256"
+    insertafter: EOF
+
+- name: Allow wiki-02 after replica promotion
+  ansible.builtin.lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
+    line: "host {{ wiki_db_name }} {{ wiki_db_user }} {{ wiki_02_ip }}/32 scram-sha-256"
+    insertafter: EOF
+
+- name: Allow backup server after replica promotion
+  ansible.builtin.lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
+    line: "host {{ wiki_db_name }} {{ wiki_db_user }} {{ backup_ip }}/32 scram-sha-256"
+    insertafter: EOF
+
+- name: Start PostgreSQL replica
+  ansible.builtin.service:
+    name: postgresql
+    state: started
+    enabled: true

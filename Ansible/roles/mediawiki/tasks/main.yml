@@ -1,0 +1,88 @@
+---
+- name: Install Nginx, PHP-FPM and MediaWiki dependencies
+  ansible.builtin.apt:
+    name:
+      - nginx
+      - php-fpm
+      - php-cli
+      - php-pgsql
+      - php-mbstring
+      - php-xml
+      - php-intl
+      - php-gd
+      - php-curl
+      - php-zip
+      - php-apcu
+    state: present
+    update_cache: true
+
+- name: Remove broken remote MediaWiki archive
+  ansible.builtin.file:
+    path: "/tmp/mediawiki-{{ mediawiki_version }}.tar.gz"
+    state: absent
+
+- name: Create MediaWiki directory
+  ansible.builtin.file:
+    path: "{{ mediawiki_root }}"
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: "0755"
+
+- name: Extract MediaWiki archive from Ansible controller
+  ansible.builtin.unarchive:
+    src: "mediawiki-{{ mediawiki_version }}.tar.gz"
+    dest: "{{ mediawiki_root }}"
+    extra_opts:
+      - "--strip-components=1"
+    creates: "{{ mediawiki_root }}/index.php"
+
+- name: Set MediaWiki ownership
+  ansible.builtin.file:
+    path: "{{ mediawiki_root }}"
+    owner: www-data
+    group: www-data
+    recurse: true
+
+- name: Configure Nginx for MediaWiki
+  ansible.builtin.template:
+    src: mediawiki.conf.j2
+    dest: /etc/nginx/sites-available/mediawiki
+    mode: "0644"
+  notify: Reload Nginx
+
+- name: Enable MediaWiki Nginx site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/mediawiki
+    dest: /etc/nginx/sites-enabled/mediawiki
+    state: link
+  notify: Reload Nginx
+
+- name: Disable default Nginx site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Reload Nginx
+
+- name: Validate Nginx configuration
+  ansible.builtin.command:
+    cmd: nginx -t
+  changed_when: false
+
+- name: Ensure PHP-FPM is enabled and running
+  ansible.builtin.service:
+    name: "php{{ php_version }}-fpm"
+    state: started
+    enabled: true
+
+- name: Ensure Nginx is enabled and running
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true
+
+- name: Allow backup server SSH key
+  ansible.posix.authorized_key:
+    user: ubuntu
+    key: "{{ backup_ssh_public_key }}"
+    state: present

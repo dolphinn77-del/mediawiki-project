@@ -1,0 +1,88 @@
+---
+- name: Check whether MediaWiki is already configured
+  ansible.builtin.stat:
+    path: "{{ mediawiki_root }}/LocalSettings.php"
+  register: mediawiki_localsettings_stat
+
+- name: Create temporary DB password file on wiki-01
+  ansible.builtin.copy:
+    dest: /tmp/mediawiki-db-pass
+    content: "{{ wiki_db_password }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when:
+    - inventory_hostname == groups['wiki'][0]
+    - not mediawiki_localsettings_stat.stat.exists
+  no_log: true
+
+- name: Create temporary admin password file on wiki-01
+  ansible.builtin.copy:
+    dest: /tmp/mediawiki-admin-pass
+    content: "{{ mediawiki_admin_password }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when:
+    - inventory_hostname == groups['wiki'][0]
+    - not mediawiki_localsettings_stat.stat.exists
+  no_log: true
+
+- name: Install MediaWiki database on wiki-01
+  ansible.builtin.command:
+    argv:
+      - php
+      - maintenance/run.php
+      - install
+      - "--dbtype=postgres"
+      - "--dbserver={{ mediawiki_db_host }}"
+      - "--dbport=5432"
+      - "--dbname={{ wiki_db_name }}"
+      - "--dbuser={{ wiki_db_user }}"
+      - "--dbpassfile=/tmp/mediawiki-db-pass"
+      - "--server={{ mediawiki_public_url }}"
+      - "--scriptpath="
+      - "--lang={{ mediawiki_language }}"
+      - "--passfile=/tmp/mediawiki-admin-pass"
+      - "{{ mediawiki_server_name }}"
+      - "{{ mediawiki_admin_user }}"
+    chdir: "{{ mediawiki_root }}"
+  when:
+    - inventory_hostname == groups['wiki'][0]
+    - not mediawiki_localsettings_stat.stat.exists
+  no_log: true
+
+- name: Remove temporary password files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/mediawiki-db-pass
+    - /tmp/mediawiki-admin-pass
+  when: inventory_hostname == groups['wiki'][0]
+  no_log: true
+
+- name: Read LocalSettings.php from wiki-01
+  ansible.builtin.slurp:
+    src: "{{ mediawiki_root }}/LocalSettings.php"
+  register: mediawiki_localsettings
+  when: inventory_hostname == groups['wiki'][0]
+  no_log: true
+
+- name: Copy shared LocalSettings.php to wiki-02
+  ansible.builtin.copy:
+    content: "{{ hostvars[groups['wiki'][0]].mediawiki_localsettings.content | b64decode }}"
+    dest: "{{ mediawiki_root }}/LocalSettings.php"
+    owner: root
+    group: www-data
+    mode: "0640"
+  when: inventory_hostname != groups['wiki'][0]
+  no_log: true
+
+- name: Secure LocalSettings.php on wiki-01
+  ansible.builtin.file:
+    path: "{{ mediawiki_root }}/LocalSettings.php"
+    owner: root
+    group: www-data
+    mode: "0640"
+  when: inventory_hostname == groups['wiki'][0]

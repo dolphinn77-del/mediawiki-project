@@ -1,0 +1,180 @@
+---
+- name: Find and fetch latest MediaWiki backup
+  hosts: backup-01
+  gather_facts: false
+  become: true
+
+  vars:
+    backup_dir: /srv/backups/postgresql
+    local_dump_dir: "{{ playbook_dir }}/restore_tmp"
+    local_dump_path: "{{ local_dump_dir }}/my_wiki_latest.dump"
+
+  tasks:
+    - name: Create local temporary directory
+      become: false
+      delegate_to: localhost
+      ansible.builtin.file:
+        path: "{{ local_dump_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Find PostgreSQL backup files
+      ansible.builtin.find:
+        paths: "{{ backup_dir }}"
+        patterns:
+          - "my_wiki_*.dump"
+        file_type: file
+        recurse: false
+      register: backup_files
+
+    - name: Ensure backup files exist
+      ansible.builtin.assert:
+        that:
+          - backup_files.matched | int > 0
+        fail_msg: "No MediaWiki backup files found in {{ backup_dir }}."
+
+    - name: Select the newest backup
+      ansible.builtin.set_fact:
+        latest_backup: "{{ backup_files.files | sort(attribute='mtime') | last }}"
+
+    - name: Verify selected backup
+      ansible.builtin.assert:
+        that:
+          - latest_backup.size | int > 0
+        fail_msg: "The newest backup file is empty."
+        success_msg: "Selected backup: {{ latest_backup.path }}"
+
+    - name: Show selected backup
+      ansible.builtin.debug:
+        msg:
+          - "Backup file: {{ latest_backup.path }}"
+          - "Size: {{ latest_backup.size }} bytes"
+          - "Modified: {{ latest_backup.mtime }}"
+
+    - name: Fetch newest backup to Ansible controller
+      ansible.builtin.fetch:
+        src: "{{ latest_backup.path }}"
+        dest: "{{ local_dump_path }}"
+        flat: true
+
+- name: Restore and verify latest MediaWiki backup
+  hosts: db_primary
+  gather_facts: false
+  become: true
+
+  vars:
+    local_dump_path: "{{ playbook_dir }}/restore_tmp/my_wiki_latest.dump"
+    remote_dump_path: /tmp/my_wiki_latest.dump
+    restore_test_db: my_wiki_restore_test
+    restore_db_owner: wikiuser
+
+  pre_tasks:
+    - name: Protect production database
+      ansible.builtin.assert:
+        that:
+          - restore_test_db == "my_wiki_restore_test"
+        fail_msg: "Safety check failed: only my_wiki_restore_test may be recreated."
+        success_msg: "Safety check passed."
+
+  tasks:
+    - name: Copy backup to database server
+      ansible.builtin.copy:
+        src: "{{ local_dump_path }}"
+        dest: "{{ remote_dump_path }}"
+        owner: postgres
+        group: postgres
+        mode: "0600"
+
+    - name: Recreate empty test database
+      become_user: postgres
+      ansible.builtin.shell: |
+        set -euo pipefail
+
+        psql postgres -v ON_ERROR_STOP=1 -tAc \
+          "SELECT pg_terminate_backend(pid)
+           FROM pg_stat_activity
+           WHERE datname='{{ restore_test_db }}'
+             AND pid <> pg_backend_pid();"
+
+        dropdb --if-exists "{{ restore_test_db }}"
+        createdb -O "{{ restore_db_owner }}" "{{ restore_test_db }}"
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Restore backup into test database
+      become_user: postgres
+      ansible.builtin.command:
+        argv:
+          - pg_restore
+          - --exit-on-error
+          - --dbname
+          - "{{ restore_test_db }}"
+          - "{{ remote_dump_path }}"
+      changed_when: true
+
+    - name: Count MediaWiki tables
+      become_user: postgres
+      ansible.builtin.command:
+        argv:
+          - psql
+          - -d
+          - "{{ restore_test_db }}"
+          - -tAc
+          - "SELECT count(*) FROM pg_tables WHERE schemaname='mediawiki';"
+      register: table_count
+      changed_when: false
+
+    - name: Count MediaWiki pages
+      become_user: postgres
+      ansible.builtin.command:
+        argv:
+          - psql
+          - -d
+          - "{{ restore_test_db }}"
+          - -tAc
+          - "SELECT count(*) FROM mediawiki.page;"
+      register: page_count
+      changed_when: false
+
+    - name: Count MediaWiki revisions
+      become_user: postgres
+      ansible.builtin.command:
+        argv:
+          - psql
+          - -d
+          - "{{ restore_test_db }}"
+          - -tAc
+          - "SELECT count(*) FROM mediawiki.revision;"
+      register: revision_count
+      changed_when: false
+
+    - name: Read restored page titles
+      become_user: postgres
+      ansible.builtin.command:
+        argv:
+          - psql
+          - -d
+          - "{{ restore_test_db }}"
+          - -tAc
+          - "SELECT page_title FROM mediawiki.page ORDER BY page_id;"
+      register: page_titles
+      changed_when: false
+
+    - name: Verify restored data
+      ansible.builtin.assert:
+        that:
+          - table_count.stdout | trim | int > 0
+          - page_count.stdout | trim | int > 0
+          - revision_count.stdout | trim | int > 0
+        fail_msg: "The latest backup failed verification."
+        success_msg: "The latest MediaWiki backup was restored and verified successfully."
+
+    - name: Show verification results
+      ansible.builtin.debug:
+        msg:
+          - "Database: {{ restore_test_db }}"
+          - "MediaWiki tables: {{ table_count.stdout | trim }}"
+          - "Pages: {{ page_count.stdout | trim }}"
+          - "Revisions: {{ revision_count.stdout | trim }}"
+          - "Page titles: {{ page_titles.stdout_lines }}"

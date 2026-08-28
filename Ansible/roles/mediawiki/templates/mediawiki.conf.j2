@@ -1,0 +1,25 @@
+server {
+    listen 80;
+    listen [::]:80;
+
+    server_name _;
+    root {{ mediawiki_root }};
+    index index.php;
+
+    client_max_body_size 20M;
+
+    add_header X-Backend-Server $hostname always;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php{{ php_version }}-fpm.sock;
+    }
+
+    location ~ /\. {
+        deny all;
+    }
+}

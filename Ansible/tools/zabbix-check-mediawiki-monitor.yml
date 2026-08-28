@@ -1,0 +1,81 @@
+---
+- name: Verify MediaWiki monitoring data
+  hosts: monitoring
+  gather_facts: false
+
+  vars:
+    api_url: "http://127.0.0.1/api_jsonrpc.php"
+
+  tasks:
+    - name: Login to Zabbix API
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+        body:
+          jsonrpc: "2.0"
+          method: user.login
+          params:
+            username: Admin
+            password: "{{ zabbix_admin_password }}"
+          id: 1
+      register: api_login
+      no_log: true
+
+    - name: Get MediaWiki Service host
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_login.json.result }}"
+        body:
+          jsonrpc: "2.0"
+          method: host.get
+          params:
+            output:
+              - hostid
+              - host
+            filter:
+              host:
+                - "MediaWiki Service"
+          id: 2
+      register: host_result
+
+    - name: Get MediaWiki web monitoring items
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_login.json.result }}"
+        body:
+          jsonrpc: "2.0"
+          method: item.get
+          params:
+            output:
+              - name
+              - key_
+              - lastvalue
+              - lastclock
+              - state
+              - error
+            hostids:
+              - "{{ host_result.json.result[0].hostid }}"
+            webitems: true
+            search:
+              key_: "web.test."
+            sortfield: "name"
+          id: 3
+      register: web_items
+
+    - name: Show collected MediaWiki metrics
+      ansible.builtin.debug:
+        msg: "{{ web_items.json.result }}"

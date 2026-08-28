@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+DB_HOST="{{ postgres_primary_ip }}"
+DB_PORT="5432"
+DB_NAME="{{ wiki_db_name }}"
+DB_USER="{{ wiki_db_user }}"
+BACKUP_DIR="/srv/backups/postgresql"
+RETENTION_DAYS=7
+
+usage() {
+    echo "Usage: $0 [-h db_host] [-p db_port] [-d db_name] [-u db_user] [-o backup_dir] [-r retention_days]"
+}
+
+log() {
+    printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
+}
+
+die() {
+    log "ERROR: $*"
+    exit 1
+}
+
+cleanup_old_backups() {
+    log "Removing backups older than ${RETENTION_DAYS} days"
+    find "$BACKUP_DIR" \
+        -type f \
+        -name "${DB_NAME}_*.dump" \
+        -mtime "+${RETENTION_DAYS}" \
+        -delete
+}
+
+while getopts ":h:p:d:u:o:r:" opt; do
+    case "$opt" in
+        h) DB_HOST="$OPTARG" ;;
+        p) DB_PORT="$OPTARG" ;;
+        d) DB_NAME="$OPTARG" ;;
+        u) DB_USER="$OPTARG" ;;
+        o) BACKUP_DIR="$OPTARG" ;;
+        r) RETENTION_DAYS="$OPTARG" ;;
+        *) usage; exit 2 ;;
+    esac
+done
+
+command -v pg_dump >/dev/null 2>&1 || die "pg_dump not found"
+
+mkdir -p "$BACKUP_DIR"
+
+TIMESTAMP="$(date '+%Y%m%d_%H%M%S')"
+BACKUP_FILE="${BACKUP_DIR}/${DB_NAME}_${TIMESTAMP}.dump"
+
+log "Starting PostgreSQL backup"
+log "Source: ${DB_HOST}:${DB_PORT}/${DB_NAME}"
+
+if ! pg_dump \
+    --host="$DB_HOST" \
+    --port="$DB_PORT" \
+    --username="$DB_USER" \
+    --format=custom \
+    --file="$BACKUP_FILE" \
+    "$DB_NAME"; then
+    rm -f "$BACKUP_FILE"
+    die "pg_dump failed"
+fi
+
+[[ -s "$BACKUP_FILE" ]] || die "Backup file is empty"
+
+log "Backup created: $BACKUP_FILE"
+
+cleanup_old_backups
+
+log "Backup completed successfully"

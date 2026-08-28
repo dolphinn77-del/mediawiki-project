@@ -1,0 +1,66 @@
+---
+- name: Verify MediaWiki web failover
+  hosts: wiki-01
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Test failover with wiki-01 stopped
+      block:
+        - name: Stop Nginx on wiki-01
+          ansible.builtin.service:
+            name: nginx
+            state: stopped
+
+        - name: Wait for load balancer health check
+          ansible.builtin.pause:
+            seconds: 10
+
+        - name: Check MediaWiki through load balancer
+          ansible.builtin.uri:
+            url: "{{ mediawiki_public_url }}"
+            method: GET
+            follow_redirects: all
+            status_code: 200
+            return_content: false
+          delegate_to: localhost
+          become: false
+          register: failover_check
+          retries: 10
+          delay: 3
+          until: failover_check.status == 200
+
+        - name: Show failover result
+          ansible.builtin.debug:
+            msg: >-
+              MediaWiki доступна через wiki-02:
+              HTTP {{ failover_check.status }}
+
+      always:
+        - name: Start Nginx on wiki-01
+          ansible.builtin.service:
+            name: nginx
+            state: started
+
+        - name: Wait for Nginx recovery
+          ansible.builtin.wait_for:
+            host: 127.0.0.1
+            port: 80
+            timeout: 30
+
+        - name: Verify MediaWiki after recovery
+          ansible.builtin.uri:
+            url: "{{ mediawiki_public_url }}"
+            method: GET
+            follow_redirects: all
+            status_code: 200
+            return_content: false
+          delegate_to: localhost
+          become: false
+          register: recovery_check
+
+        - name: Show recovery result
+          ansible.builtin.debug:
+            msg: >-
+              wiki-01 возвращена, MediaWiki доступна:
+              HTTP {{ recovery_check.status }}

@@ -1,0 +1,60 @@
+---
+- name: Check freshness of the latest MediaWiki backup
+  hosts: backup-01
+  gather_facts: false
+  become: true
+
+  vars:
+    backup_dir: /srv/backups/postgresql
+    max_age_seconds: 93600
+
+  tasks:
+    - name: Find MediaWiki backup files
+      ansible.builtin.find:
+        paths: "{{ backup_dir }}"
+        patterns:
+          - "my_wiki_*.dump"
+        file_type: file
+        recurse: false
+      register: backup_files
+
+    - name: Ensure backup files exist
+      ansible.builtin.assert:
+        that:
+          - backup_files.matched | int > 0
+        fail_msg: "Резервные копии не найдены."
+        success_msg: "Резервные копии найдены."
+
+    - name: Select the newest backup
+      ansible.builtin.set_fact:
+        latest_backup: "{{ backup_files.files | sort(attribute='mtime') | last }}"
+
+    - name: Get current server time
+      ansible.builtin.command:
+        cmd: date +%s
+      register: current_epoch
+      changed_when: false
+
+    - name: Calculate backup age
+      ansible.builtin.set_fact:
+        backup_age_seconds: >-
+          {{ (current_epoch.stdout | int) - (latest_backup.mtime | int) }}
+
+    - name: Verify backup age and size
+      ansible.builtin.assert:
+        that:
+          - latest_backup.size | int > 0
+          - backup_age_seconds | int >= 0
+          - backup_age_seconds | int <= max_age_seconds
+        fail_msg: >-
+          Последняя резервная копия устарела или повреждена.
+          Файл: {{ latest_backup.path }}
+        success_msg: >-
+          Последняя резервная копия свежая и непустая.
+
+    - name: Show backup status
+      ansible.builtin.debug:
+        msg:
+          - "Файл: {{ latest_backup.path }}"
+          - "Размер: {{ latest_backup.size }} байт"
+          - "Возраст: {{ (backup_age_seconds | int // 3600) }} часов"

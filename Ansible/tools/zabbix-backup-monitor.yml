@@ -1,0 +1,402 @@
+---
+- name: Configure MediaWiki backup monitoring in Zabbix
+  hosts: monitoring
+  gather_facts: false
+
+  vars:
+    api_url: "http://127.0.0.1/api_jsonrpc.php"
+    backup_group: "MediaWiki"
+    backup_host: "backup-01"
+    backup_ip: "10.50.0.41"
+    backup_item_key: "mediawiki.backup.age"
+    backup_item_name: "Возраст последней резервной копии MediaWiki"
+    backup_trigger_name: "Резервная копия MediaWiki старше 26 часов"
+    backup_max_age: 93600
+
+  tasks:
+    - name: Login to Zabbix API
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+        body:
+          jsonrpc: "2.0"
+          method: user.login
+          params:
+            username: Admin
+            password: "{{ zabbix_admin_password }}"
+          id: 1
+      register: api_login
+      failed_when: api_login.json.error is defined
+      no_log: true
+
+    - name: Save API token
+      ansible.builtin.set_fact:
+        api_token: "{{ api_login.json.result }}"
+      no_log: true
+
+    - name: Find host group
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: hostgroup.get
+          params:
+            output: [groupid, name]
+            filter:
+              name: ["{{ backup_group }}"]
+          id: 2
+      register: group_get
+      failed_when: group_get.json.error is defined
+
+    - name: Create host group
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: hostgroup.create
+          params:
+            name: "{{ backup_group }}"
+          id: 3
+      register: group_create
+      when: group_get.json.result | length == 0
+      changed_when: true
+      failed_when: group_create.json.error is defined
+
+    - name: Save host group ID
+      ansible.builtin.set_fact:
+        backup_groupid: >-
+          {{
+            group_get.json.result[0].groupid
+            if group_get.json.result | length > 0
+            else group_create.json.result.groupids[0]
+          }}
+
+    - name: Find backup host
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: host.get
+          params:
+            output: [hostid, host, name]
+            filter:
+              host: ["{{ backup_host }}"]
+          id: 4
+      register: host_get
+      failed_when: host_get.json.error is defined
+
+    - name: Create backup host
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: host.create
+          params:
+            host: "{{ backup_host }}"
+            name: "{{ backup_host }}"
+            groups:
+              - groupid: "{{ backup_groupid }}"
+            interfaces:
+              - type: 1
+                main: 1
+                useip: 1
+                ip: "{{ backup_ip }}"
+                dns: ""
+                port: "10050"
+          id: 5
+      register: host_create
+      when: host_get.json.result | length == 0
+      changed_when: true
+      failed_when: host_create.json.error is defined
+
+    - name: Save backup host ID
+      ansible.builtin.set_fact:
+        backup_hostid: >-
+          {{
+            host_get.json.result[0].hostid
+            if host_get.json.result | length > 0
+            else host_create.json.result.hostids[0]
+          }}
+
+    - name: Find agent interface
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: hostinterface.get
+          params:
+            output: extend
+            hostids: ["{{ backup_hostid }}"]
+            filter:
+              type: 1
+          id: 6
+      register: interface_get
+      failed_when: interface_get.json.error is defined
+
+    - name: Create agent interface when absent
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: hostinterface.create
+          params:
+            hostid: "{{ backup_hostid }}"
+            type: 1
+            main: 1
+            useip: 1
+            ip: "{{ backup_ip }}"
+            dns: ""
+            port: "10050"
+          id: 7
+      register: interface_create
+      when: interface_get.json.result | length == 0
+      changed_when: true
+      failed_when: interface_create.json.error is defined
+
+    - name: Update existing agent interface
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: hostinterface.update
+          params:
+            interfaceid: "{{ interface_get.json.result[0].interfaceid }}"
+            main: 1
+            useip: 1
+            ip: "{{ backup_ip }}"
+            dns: ""
+            port: "10050"
+          id: 8
+      register: interface_update
+      when: interface_get.json.result | length > 0
+      changed_when: true
+      failed_when: interface_update.json.error is defined
+
+    - name: Find backup age item
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: item.get
+          params:
+            output: [itemid, name, key_]
+            hostids: ["{{ backup_hostid }}"]
+            filter:
+              key_: ["{{ backup_item_key }}"]
+          id: 9
+      register: item_get
+      failed_when: item_get.json.error is defined
+
+    - name: Create backup age item
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: item.create
+          params:
+            hostid: "{{ backup_hostid }}"
+            interfaceid: "{{ interface_get.json.result[0].interfaceid }}"
+            name: "{{ backup_item_name }}"
+            key_: "{{ backup_item_key }}"
+            type: 0
+            value_type: 3
+            units: "s"
+            delay: "1m"
+            history: "90d"
+            trends: "365d"
+            status: 0
+          id: 10
+      register: item_create
+      when: item_get.json.result | length == 0
+      changed_when: true
+      failed_when: item_create.json.error is defined
+
+    - name: Update existing backup age item
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: item.update
+          params:
+            itemid: "{{ item_get.json.result[0].itemid }}"
+            name: "{{ backup_item_name }}"
+            type: 0
+            value_type: 3
+            units: "s"
+            delay: "1m"
+            status: 0
+          id: 11
+      register: item_update
+      when: item_get.json.result | length > 0
+      changed_when: true
+      failed_when: item_update.json.error is defined
+
+    - name: Find backup age trigger
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: trigger.get
+          params:
+            output: [triggerid, description, expression]
+            hostids: ["{{ backup_hostid }}"]
+            filter:
+              description: ["{{ backup_trigger_name }}"]
+          id: 12
+      register: trigger_get
+      failed_when: trigger_get.json.error is defined
+
+    - name: Create backup age trigger
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: trigger.create
+          params:
+            description: "{{ backup_trigger_name }}"
+            expression: "last(/{{ backup_host }}/{{ backup_item_key }})>{{ backup_max_age }}"
+            priority: 3
+            status: 0
+            manual_close: 1
+          id: 13
+      register: trigger_create
+      when: trigger_get.json.result | length == 0
+      changed_when: true
+      failed_when: trigger_create.json.error is defined
+
+    - name: Update existing backup age trigger
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: trigger.update
+          params:
+            triggerid: "{{ trigger_get.json.result[0].triggerid }}"
+            description: "{{ backup_trigger_name }}"
+            expression: "last(/{{ backup_host }}/{{ backup_item_key }})>{{ backup_max_age }}"
+            priority: 3
+            status: 0
+            manual_close: 1
+          id: 14
+      register: trigger_update
+      when: trigger_get.json.result | length > 0
+      changed_when: true
+      failed_when: trigger_update.json.error is defined
+
+    - name: Wait for first metric
+      ansible.builtin.pause:
+        seconds: 70
+
+    - name: Read collected backup metric
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: item.get
+          params:
+            output:
+              - itemid
+              - name
+              - key_
+              - lastvalue
+              - lastclock
+              - state
+              - error
+            hostids: ["{{ backup_hostid }}"]
+            filter:
+              key_: ["{{ backup_item_key }}"]
+          id: 15
+      register: metric_verify
+      failed_when: metric_verify.json.error is defined
+
+    - name: Show verification result
+      ansible.builtin.debug:
+        msg: "{{ metric_verify.json.result }}"

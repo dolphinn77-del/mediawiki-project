@@ -1,0 +1,34 @@
+---
+postgresql_version: "14"
+
+wiki_db_name: "my_wiki"
+wiki_db_user: "wikiuser"
+wiki_db_password: "{{ vault_wiki_db_password }}"
+
+replication_user: "replicator"
+replication_password: "{{ vault_replication_password }}"
+
+postgres_primary_ip: "10.50.0.32"
+postgres_replica_ip: "10.50.0.31"
+
+wiki_01_ip: "10.50.0.21"
+wiki_02_ip: "10.50.0.22"
+
+mediawiki_version: "1.42.1"
+mediawiki_root: "/var/www/mediawiki"
+mediawiki_db_host: "10.50.0.32"
+mediawiki_server_name: "MediaWiki Corporate"
+php_version: "8.1"
+
+mediawiki_admin_user: "WikiAdmin"
+mediawiki_admin_password: "{{ vault_mediawiki_admin_password }}"
+mediawiki_public_url: "http://51.250.34.5"
+mediawiki_language: "ru"
+backup_ip: "10.50.0.41"
+
+backup_ssh_public_key: "{{ vault_backup_ssh_public_key }}"
+
+zabbix_db_name: "zabbix"
+zabbix_db_user: "zabbix"
+zabbix_db_password: "{{ vault_zabbix_db_password }}"
+zabbix_admin_password: "{{ vault_zabbix_admin_password }}"

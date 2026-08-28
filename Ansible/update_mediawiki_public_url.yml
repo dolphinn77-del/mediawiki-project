@@ -1,0 +1,36 @@
+---
+- name: Update MediaWiki public URL
+  hosts: wiki-01:wiki-02
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Find LocalSettings.php
+      ansible.builtin.find:
+        paths: /var/www
+        patterns: LocalSettings.php
+        file_type: file
+        recurse: true
+      register: mediawiki_settings
+
+    - name: Verify LocalSettings.php was found
+      ansible.builtin.assert:
+        that:
+          - mediawiki_settings.matched | int > 0
+        fail_msg: "LocalSettings.php не найден"
+        success_msg: "LocalSettings.php найден"
+
+    - name: Set current load balancer URL
+      ansible.builtin.lineinfile:
+        path: "{{ mediawiki_settings.files[0].path }}"
+        regexp: '^\$wgServer\s*='
+        line: '$wgServer = "{{ mediawiki_public_url }}";'
+        backup: true
+        validate: "/usr/bin/php -l %s"
+      register: server_url_update
+
+    - name: Show configured URL
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }}:
+          $wgServer = {{ mediawiki_public_url }}

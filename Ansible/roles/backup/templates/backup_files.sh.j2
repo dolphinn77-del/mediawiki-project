@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+SOURCE_HOST="10.50.0.21"
+SOURCE_PATH="/var/www/mediawiki"
+BACKUP_DIR="/srv/backups/mediawiki"
+RETENTION_DAYS=7
+SSH_USER="ubuntu"
+SSH_KEY="/root/.ssh/id_ed25519"
+
+usage() {
+    echo "Usage: $0 [-h source_host] [-s source_path] [-o backup_dir] [-r retention_days]"
+}
+
+log() {
+    printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
+}
+
+die() {
+    log "ERROR: $*"
+    exit 1
+}
+
+cleanup_old_backups() {
+    log "Removing backups older than ${RETENTION_DAYS} days"
+    find "$BACKUP_DIR" \
+        -type f \
+        -name "mediawiki_*.tar.gz" \
+        -mtime "+${RETENTION_DAYS}" \
+        -delete
+}
+
+while getopts ":h:s:o:r:" opt; do
+    case "$opt" in
+        h) SOURCE_HOST="$OPTARG" ;;
+        s) SOURCE_PATH="$OPTARG" ;;
+        o) BACKUP_DIR="$OPTARG" ;;
+        r) RETENTION_DAYS="$OPTARG" ;;
+        *) usage; exit 2 ;;
+    esac
+done
+
+command -v ssh >/dev/null 2>&1 || die "ssh not found"
+command -v gzip >/dev/null 2>&1 || die "gzip not found"
+
+mkdir -p "$BACKUP_DIR"
+
+TIMESTAMP="$(date '+%Y%m%d_%H%M%S')"
+BACKUP_FILE="${BACKUP_DIR}/mediawiki_${SOURCE_HOST}_${TIMESTAMP}.tar.gz"
+
+log "Starting MediaWiki filesystem backup"
+log "Source: ${SSH_USER}@${SOURCE_HOST}:${SOURCE_PATH}"
+
+if ! ssh \
+    -o BatchMode=yes \
+    -o StrictHostKeyChecking=accept-new \
+    -i "$SSH_KEY" \
+    "${SSH_USER}@${SOURCE_HOST}" \
+    "sudo tar -C \"$(dirname "$SOURCE_PATH")\" -czf - \"$(basename "$SOURCE_PATH")\"" \
+    > "$BACKUP_FILE"; then
+
+    rm -f "$BACKUP_FILE"
+    die "Filesystem backup failed"
+fi
+
+[[ -s "$BACKUP_FILE" ]] || die "Backup archive is empty"
+
+if ! gzip -t "$BACKUP_FILE"; then
+    rm -f "$BACKUP_FILE"
+    die "Backup archive integrity check failed"
+fi
+
+chmod 0600 "$BACKUP_FILE"
+
+log "Backup created: $BACKUP_FILE"
+
+cleanup_old_backups
+
+log "Filesystem backup completed successfully"

@@ -1,0 +1,52 @@
+---
+- name: Allow Zabbix agent to read MediaWiki backup age
+  hosts: backup-01
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Ensure sudo is installed
+      ansible.builtin.apt:
+        name: sudo
+        state: present
+        update_cache: false
+
+    - name: Allow only backup age checker through sudo
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/zabbix-mediawiki-backup
+        owner: root
+        group: root
+        mode: "0440"
+        validate: "/usr/sbin/visudo -cf %s"
+        content: |
+          zabbix ALL=(root) NOPASSWD: /usr/local/bin/check_mediawiki_backup_age.sh
+
+    - name: Configure protected backup metric
+      ansible.builtin.copy:
+        dest: /etc/zabbix/zabbix_agentd.d/mediawiki_backup.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          UserParameter=mediawiki.backup.age,sudo -n /usr/local/bin/check_mediawiki_backup_age.sh
+      notify: Restart Zabbix agent
+
+    - name: Apply agent configuration immediately
+      ansible.builtin.meta: flush_handlers
+
+    - name: Test checker as Zabbix user
+      become_user: zabbix
+      ansible.builtin.command:
+        cmd: sudo -n /usr/local/bin/check_mediawiki_backup_age.sh
+      register: checker_test
+      changed_when: false
+
+    - name: Show checker result
+      ansible.builtin.debug:
+        msg: "Значение от пользователя zabbix: {{ checker_test.stdout }}"
+
+  handlers:
+    - name: Restart Zabbix agent
+      ansible.builtin.service:
+        name: zabbix-agent
+        state: restarted

@@ -1,0 +1,88 @@
+---
+- name: Configure PostgreSQL to listen on network
+  ansible.builtin.lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: '^[# ]*listen_addresses\s*='
+    line: "listen_addresses = '*'"
+  notify: Restart PostgreSQL
+
+- name: Configure WAL level
+  ansible.builtin.lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: '^[# ]*wal_level\s*='
+    line: "wal_level = replica"
+  notify: Restart PostgreSQL
+
+- name: Configure WAL senders
+  ansible.builtin.lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: '^[# ]*max_wal_senders\s*='
+    line: "max_wal_senders = 10"
+  notify: Restart PostgreSQL
+
+- name: Configure WAL retention
+  ansible.builtin.lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: '^[# ]*wal_keep_size\s*='
+    line: "wal_keep_size = 256MB"
+  notify: Restart PostgreSQL
+
+- name: Allow wiki-01 to access MediaWiki database
+  ansible.builtin.lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
+    line: "host {{ wiki_db_name }} {{ wiki_db_user }} {{ wiki_01_ip }}/32 scram-sha-256"
+    insertafter: EOF
+  notify: Reload PostgreSQL
+
+- name: Allow wiki-02 to access MediaWiki database
+  ansible.builtin.lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
+    line: "host {{ wiki_db_name }} {{ wiki_db_user }} {{ wiki_02_ip }}/32 scram-sha-256"
+    insertafter: EOF
+  notify: Reload PostgreSQL
+
+- name: Allow PostgreSQL replication
+  ansible.builtin.lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
+    line: "host replication {{ replication_user }} {{ postgres_replica_ip }}/32 scram-sha-256"
+    insertafter: EOF
+  notify: Reload PostgreSQL
+
+- name: Allow backup server to dump MediaWiki database
+  ansible.builtin.lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
+    line: "host {{ wiki_db_name }} {{ wiki_db_user }} {{ backup_ip }}/32 scram-sha-256"
+    insertafter: EOF
+  notify: Reload PostgreSQL
+
+- name: Apply PostgreSQL configuration before creating users
+  ansible.builtin.meta: flush_handlers
+
+- name: Create MediaWiki PostgreSQL user
+  community.postgresql.postgresql_user:
+    login_db: postgres
+    login_unix_socket: /var/run/postgresql
+    name: "{{ wiki_db_user }}"
+    password: "{{ wiki_db_password }}"
+    state: present
+  become_user: postgres
+  no_log: true
+
+- name: Create replication PostgreSQL user
+  community.postgresql.postgresql_user:
+    login_db: postgres
+    login_unix_socket: /var/run/postgresql
+    name: "{{ replication_user }}"
+    password: "{{ replication_password }}"
+    role_attr_flags: "LOGIN,REPLICATION"
+    state: present
+  become_user: postgres
+  no_log: true
+
+- name: Create MediaWiki database
+  community.postgresql.postgresql_db:
+    name: "{{ wiki_db_name }}"
+    owner: "{{ wiki_db_user }}"
+    encoding: UTF8
+    state: present
+  become_user: postgres

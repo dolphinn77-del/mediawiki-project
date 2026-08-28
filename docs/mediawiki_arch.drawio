@@ -1,0 +1,121 @@
+<mxfile host="app.diagrams.net" agent="ChatGPT">
+  <diagram id="final-arch" name="MediaWiki Final Architecture">
+    <mxGraphModel dx="1414" dy="768" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="frame" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;strokeWidth=1;" value="" vertex="1">
+          <mxGeometry height="700" width="1260" x="20" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="title" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=22;fontStyle=1;" value="Архитектура корпоративного сервиса MediaWiki" vertex="1">
+          <mxGeometry height="30" width="640" x="330" y="28" as="geometry" />
+        </mxCell>
+        <mxCell id="clients_group" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#999999;strokeWidth=1;" value="" vertex="1">
+          <mxGeometry height="300" width="160" x="70" y="125" as="geometry" />
+        </mxCell>
+        <mxCell id="laptop" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" value="Ноутбук" vertex="1">
+          <mxGeometry height="55" width="120" x="90" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="tablet" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" value="Планшет" vertex="1">
+          <mxGeometry height="55" width="120" x="90" y="230" as="geometry" />
+        </mxCell>
+        <mxCell id="phone" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" value="Смартфон" vertex="1">
+          <mxGeometry height="55" width="80" x="110" y="325" as="geometry" />
+        </mxCell>
+        <mxCell id="clients_label" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=14;fontStyle=1;" value="Клиенты" vertex="1">
+          <mxGeometry height="24" width="120" x="90" y="400" as="geometry" />
+        </mxCell>
+        <mxCell id="internet" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d9e1f2;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;fontStyle=1;" value="Интернет" vertex="1">
+          <mxGeometry height="55" width="115" x="340" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="lb" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" value="lb-01&#xa;Nginx Load Balancer&#xa;10.50.0.10" vertex="1">
+          <mxGeometry height="90" width="170" x="555" y="225" as="geometry" />
+        </mxCell>
+        <mxCell id="cloud_note" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=11;align=left;spacingLeft=8;" value="Yandex Cloud / VPC 10.50.0.0/24" vertex="1">
+          <mxGeometry height="24" width="260" x="835" y="82" as="geometry" />
+        </mxCell>
+        <mxCell id="servers_group" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#999999;strokeWidth=1;" value="" vertex="1">
+          <mxGeometry height="490" width="360" x="820" y="115" as="geometry" />
+        </mxCell>
+        <mxCell id="wiki1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" value="wiki-01&#xa;MediaWiki&#xa;Nginx + PHP-FPM&#xa;10.50.0.21" vertex="1">
+          <mxGeometry height="75" width="190" x="905" y="125" as="geometry" />
+        </mxCell>
+        <mxCell id="wiki2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" value="wiki-02&#xa;MediaWiki&#xa;Nginx + PHP-FPM&#xa;10.50.0.22" vertex="1">
+          <mxGeometry height="75" width="190" x="905" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="app_label" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=14;fontStyle=1;" value="Экземпляры приложения" vertex="1">
+          <mxGeometry height="22" width="230" x="905" y="303" as="geometry" />
+        </mxCell>
+        <mxCell id="db1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" value="db-01&#xa;PostgreSQL PRIMARY&#xa;10.50.0.31" vertex="1">
+          <mxGeometry height="65" width="190" x="905" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="db2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" value="db-02&#xa;PostgreSQL STANDBY&#xa;10.50.0.32" vertex="1">
+          <mxGeometry height="65" width="190" x="905" y="440" as="geometry" />
+        </mxCell>
+        <mxCell id="backup" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" value="backup-01&#xa;Backup Storage&#xa;10.50.0.41" vertex="1">
+          <mxGeometry height="60" width="150" x="850" y="520" as="geometry" />
+        </mxCell>
+        <mxCell id="zabbix" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" value="zabbix-01&#xa;Zabbix Server&#xa;10.50.0.51" vertex="1">
+          <mxGeometry height="60" width="150" x="1015" y="520" as="geometry" />
+        </mxCell>
+        <mxCell id="servers_label" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=14;fontStyle=1;" value="Серверы" vertex="1">
+          <mxGeometry height="20" width="120" x="935" y="585" as="geometry" />
+        </mxCell>
+        <mxCell id="mgmt" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=11;align=left;spacingLeft=8;" value="Управляющая ВМ&#xa;10.10.0.85&#xa;Terraform • Ansible • yc • Git&#xa;&#xa;Управление инфраструктурой&#xa;(вне пользовательского трафика)" vertex="1">
+          <mxGeometry height="115" width="255" x="310" y="520" as="geometry" />
+        </mxCell>
+        <mxCell id="legend" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;strokeWidth=1;fontSize=11;align=left;spacingLeft=8;" value="Служебные взаимодействия:&#xa;• MediaWiki → db-01: PostgreSQL TCP/5432&#xa;• db-01 → db-02: Streaming Replication TCP/5432&#xa;• backup-01: резервные копии файлов + pg_dump&#xa;• zabbix-01: HTTP-проверки + Zabbix Agent" vertex="1">
+          <mxGeometry height="70" width="585" x="595" y="625" as="geometry" />
+        </mxCell>
+        <mxCell id="c_i" edge="1" parent="1" source="clients_group" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=11;labelBackgroundColor=#ffffff;" target="internet" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="250" y="277.5" />
+              <mxPoint x="250" y="277.5" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="i_lb" edge="1" parent="1" source="internet" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=11;labelBackgroundColor=#ffffff;entryX=-0.002;entryY=0.583;entryDx=0;entryDy=0;entryPerimeter=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="lb" value="HTTP :80">
+          <mxGeometry relative="1" x="-0.1211" y="17" as="geometry">
+            <mxPoint as="offset" />
+            <mxPoint x="477.99999485985256" y="277.48162790697677" as="sourcePoint" />
+            <mxPoint x="551.64" y="277.4" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lb_w1" edge="1" parent="1" source="lb" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=11;labelBackgroundColor=#ffffff;" target="wiki1" value="HTTP :80">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="780" y="300" />
+              <mxPoint x="780" y="175" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lb_w2" edge="1" parent="1" source="lb" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=11;labelBackgroundColor=#ffffff;" target="wiki2" value="HTTP :80">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="760" y="257.5" />
+              <mxPoint x="760" y="257.5" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="w1_db" edge="1" parent="1" source="wiki1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=11;labelBackgroundColor=#ffffff;" target="db1" value="PostgreSQL :5432">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="870" y="375" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="w2_db" edge="1" parent="1" source="wiki2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=11;labelBackgroundColor=#ffffff;" target="db1" value="PostgreSQL :5432">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="880" y="375" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="db_repl" edge="1" parent="1" source="db1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=11;labelBackgroundColor=#ffffff;" target="db2" value="Replication">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

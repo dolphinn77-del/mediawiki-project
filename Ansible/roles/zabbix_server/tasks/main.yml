@@ -1,0 +1,168 @@
+---
+- name: Download Zabbix 7.0 repository package
+  ansible.builtin.get_url:
+    url: "https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.0+ubuntu22.04_all.deb"
+    dest: /tmp/zabbix-release.deb
+    mode: "0644"
+
+- name: Install Zabbix repository
+  ansible.builtin.apt:
+    deb: /tmp/zabbix-release.deb
+
+- name: Update APT cache after adding Zabbix repository
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Install Zabbix server stack
+  ansible.builtin.apt:
+    name:
+      - zabbix-server-pgsql
+      - zabbix-frontend-php
+      - php8.1-pgsql
+      - zabbix-nginx-conf
+      - zabbix-sql-scripts
+      - zabbix-agent2
+      - postgresql
+      - python3-psycopg2
+    state: present
+
+- name: Ensure PostgreSQL is running
+  ansible.builtin.service:
+    name: postgresql
+    state: started
+    enabled: true
+
+- name: Create Zabbix PostgreSQL user
+  community.postgresql.postgresql_user:
+    name: "{{ zabbix_db_user }}"
+    password: "{{ zabbix_db_password }}"
+    state: present
+  become_user: postgres
+  no_log: true
+
+- name: Create Zabbix PostgreSQL database
+  community.postgresql.postgresql_db:
+    name: "{{ zabbix_db_name }}"
+    owner: "{{ zabbix_db_user }}"
+    encoding: UTF8
+    state: present
+  become_user: postgres
+
+- name: Check whether Zabbix schema is already imported
+  ansible.builtin.shell: |
+    runuser -u zabbix -- psql -d {{ zabbix_db_name }} -tAc \
+    "SELECT 1 FROM pg_class WHERE relname='users' LIMIT 1;"
+  register: zabbix_schema
+  changed_when: false
+
+- name: Import initial Zabbix database schema
+  ansible.builtin.shell: |
+    set -o pipefail
+    zcat /usr/share/zabbix-sql-scripts/postgresql/server.sql.gz |
+    runuser -u zabbix -- psql -d {{ zabbix_db_name }}
+  args:
+    executable: /bin/bash
+  when: zabbix_schema.stdout.strip() != "1"
+
+- name: Configure Zabbix database host
+  ansible.builtin.lineinfile:
+    path: /etc/zabbix/zabbix_server.conf
+    regexp: '^[# ]*DBHost='
+    line: 'DBHost=localhost'
+
+- name: Configure Zabbix database name
+  ansible.builtin.lineinfile:
+    path: /etc/zabbix/zabbix_server.conf
+    regexp: '^[# ]*DBName='
+    line: 'DBName={{ zabbix_db_name }}'
+
+- name: Configure Zabbix database user
+  ansible.builtin.lineinfile:
+    path: /etc/zabbix/zabbix_server.conf
+    regexp: '^[# ]*DBUser='
+    line: 'DBUser={{ zabbix_db_user }}'
+
+- name: Configure Zabbix database password
+  ansible.builtin.lineinfile:
+    path: /etc/zabbix/zabbix_server.conf
+    regexp: '^[# ]*DBPassword='
+    line: 'DBPassword={{ zabbix_db_password }}'
+  no_log: true
+
+- name: Configure Nginx listen port
+  ansible.builtin.lineinfile:
+    path: /etc/zabbix/nginx.conf
+    regexp: '^\s*#?\s*listen\s+8080;'
+    line: '        listen 80;'
+
+- name: Configure Nginx server name
+  ansible.builtin.lineinfile:
+    path: /etc/zabbix/nginx.conf
+    regexp: '^\s*#?\s*server_name\s+example.com;'
+    line: '        server_name _;'
+
+- name: Disable default Nginx site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+
+- name: Start Zabbix services
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+  loop:
+    - zabbix-server
+    - zabbix-agent2
+    - php8.1-fpm
+    - nginx
+
+- name: Create Zabbix frontend configuration directory
+  ansible.builtin.file:
+    path: /etc/zabbix/web
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: "0750"
+
+- name: Configure Zabbix frontend
+  ansible.builtin.template:
+    src: zabbix.conf.php.j2
+    dest: /etc/zabbix/web/zabbix.conf.php
+    owner: www-data
+    group: www-data
+    mode: "0640"
+  no_log: true
+
+- name: Restart Zabbix frontend services
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: restarted
+  loop:
+    - php8.1-fpm
+    - nginx
+
+- name: Create Zabbix frontend configuration directory
+  ansible.builtin.file:
+    path: /etc/zabbix/web
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: "0750"
+
+- name: Configure Zabbix frontend
+  ansible.builtin.template:
+    src: zabbix.conf.php.j2
+    dest: /etc/zabbix/web/zabbix.conf.php
+    owner: www-data
+    group: www-data
+    mode: "0640"
+  no_log: true
+
+- name: Restart Zabbix frontend services
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: restarted
+  loop:
+    - php8.1-fpm
+    - nginx

@@ -1,0 +1,72 @@
+---
+- name: Install backup utilities
+  ansible.builtin.apt:
+    name:
+      - postgresql-client
+      - gzip
+      - rsync
+    state: present
+    update_cache: true
+
+- name: Create backup directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  loop:
+    - /srv/backups
+    - /srv/backups/postgresql
+    - /srv/backups/mediawiki
+
+- name: Create PostgreSQL password file
+  ansible.builtin.copy:
+    dest: /root/.pgpass
+    owner: root
+    group: root
+    mode: "0600"
+    content: |
+      {{ postgres_primary_ip }}:5432:{{ wiki_db_name }}:{{ wiki_db_user }}:{{ wiki_db_password }}
+      {{ postgres_replica_ip }}:5432:{{ wiki_db_name }}:{{ wiki_db_user }}:{{ wiki_db_password }}
+  no_log: true
+
+- name: Install PostgreSQL backup script
+  ansible.builtin.template:
+    src: backup_db.sh.j2
+    dest: /usr/local/sbin/backup_db.sh
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Install MediaWiki filesystem backup script
+  ansible.builtin.template:
+    src: backup_files.sh.j2
+    dest: /usr/local/sbin/backup_files.sh
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Schedule PostgreSQL backup
+  ansible.builtin.cron:
+    name: "MediaWiki PostgreSQL backup"
+    user: root
+    minute: "0"
+    hour: "2"
+    job: "/usr/local/sbin/backup_db.sh >> /var/log/mediawiki-backup.log 2>&1"
+
+- name: Schedule wiki-01 filesystem backup
+  ansible.builtin.cron:
+    name: "MediaWiki wiki-01 filesystem backup"
+    user: root
+    minute: "15"
+    hour: "2"
+    job: "/usr/local/sbin/backup_files.sh -h 10.50.0.21 >> /var/log/mediawiki-backup.log 2>&1"
+
+- name: Schedule wiki-02 filesystem backup
+  ansible.builtin.cron:
+    name: "MediaWiki wiki-02 filesystem backup"
+    user: root
+    minute: "30"
+    hour: "2"
+    job: "/usr/local/sbin/backup_files.sh -h 10.50.0.22 >> /var/log/mediawiki-backup.log 2>&1"

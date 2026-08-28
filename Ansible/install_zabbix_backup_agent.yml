@@ -1,0 +1,123 @@
+---
+- name: Install Zabbix agent and backup monitoring
+  hosts: backup-01
+  gather_facts: false
+  become: true
+
+  vars:
+    zabbix_server_address: "{{ hostvars['zabbix-01']['ansible_host'] | default('zabbix-01') }}"
+    zabbix_agent_hostname: "{{ inventory_hostname }}"
+
+  tasks:
+    - name: Install Zabbix agent
+      ansible.builtin.apt:
+        name: zabbix-agent
+        state: present
+        update_cache: true
+
+    - name: Configure Zabbix server address
+      ansible.builtin.lineinfile:
+        path: /etc/zabbix/zabbix_agentd.conf
+        regexp: '^#?\s*Server='
+        line: "Server={{ zabbix_server_address }}"
+        backup: true
+      notify: Restart Zabbix agent
+
+    - name: Configure active checks server
+      ansible.builtin.lineinfile:
+        path: /etc/zabbix/zabbix_agentd.conf
+        regexp: '^#?\s*ServerActive='
+        line: "ServerActive={{ zabbix_server_address }}"
+      notify: Restart Zabbix agent
+
+    - name: Configure agent hostname
+      ansible.builtin.lineinfile:
+        path: /etc/zabbix/zabbix_agentd.conf
+        regexp: '^#?\s*Hostname='
+        line: "Hostname={{ zabbix_agent_hostname }}"
+      notify: Restart Zabbix agent
+
+    - name: Ensure custom configuration directory is included
+      ansible.builtin.lineinfile:
+        path: /etc/zabbix/zabbix_agentd.conf
+        regexp: '^#?\s*Include=/etc/zabbix/zabbix_agentd.d/\*\.conf$'
+        line: "Include=/etc/zabbix/zabbix_agentd.d/*.conf"
+      notify: Restart Zabbix agent
+
+    - name: Install backup age checker
+      ansible.builtin.copy:
+        dest: /usr/local/bin/check_mediawiki_backup_age.sh
+        mode: "0755"
+        owner: root
+        group: root
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          backup_dir="/srv/backups/postgresql"
+
+          latest_backup="$(
+            find "$backup_dir" \
+              -maxdepth 1 \
+              -type f \
+              -name 'my_wiki_*.dump' \
+              -printf '%T@ %p\n' 2>/dev/null |
+            sort -nr |
+            head -n 1
+          )"
+
+          if [ -z "$latest_backup" ]; then
+            echo "999999999"
+            exit 0
+          fi
+
+          backup_mtime="${latest_backup%% *}"
+          backup_mtime="${backup_mtime%.*}"
+          current_time="$(date +%s)"
+          backup_age=$((current_time - backup_mtime))
+
+          if [ "$backup_age" -lt 0 ]; then
+            backup_age=0
+          fi
+
+          echo "$backup_age"
+
+    - name: Create Zabbix custom configuration directory
+      ansible.builtin.file:
+        path: /etc/zabbix/zabbix_agentd.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Configure backup age UserParameter
+      ansible.builtin.copy:
+        dest: /etc/zabbix/zabbix_agentd.d/mediawiki_backup.conf
+        mode: "0644"
+        owner: root
+        group: root
+        content: |
+          UserParameter=mediawiki.backup.age,sudo -n /usr/local/bin/check_mediawiki_backup_age.sh
+      notify: Restart Zabbix agent
+
+    - name: Enable and start Zabbix agent
+      ansible.builtin.service:
+        name: zabbix-agent
+        enabled: true
+        state: started
+
+    - name: Test backup age metric
+      ansible.builtin.command:
+        cmd: zabbix_agentd -t mediawiki.backup.age
+      register: zabbix_metric_test
+      changed_when: false
+
+    - name: Show backup age metric
+      ansible.builtin.debug:
+        var: zabbix_metric_test.stdout_lines
+
+  handlers:
+    - name: Restart Zabbix agent
+      ansible.builtin.service:
+        name: zabbix-agent
+        state: restarted

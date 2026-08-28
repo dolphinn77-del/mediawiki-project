@@ -1,0 +1,70 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+
+# Secrets
+*.tfvars
+*.tfvars.json
+authorized_key.json
+*.pem
+*.key
+
+# Backups
+*.dump
+*.sql
+*.tar
+*.tar.gz
+backups/
+
+# Ansible
+*.retry
+*.vault
+
+# Editors
+.vscode/
+.idea/
+.DS_Store
+
+# MediaWiki project local artifacts
+
+# Terraform runtime files
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+
+# Local Terraform variables and credentials
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+!*.tfvars.json.example
+
+# Runtime files
+auto-stop.pid
+auto-stop.log
+*.retry
+
+# Temporary backups and editor files
+*.backup-*
+*.bak
+*.swp
+*~
+
+# Local secrets and keys
+.env
+.env.*
+!.env.example
+vault-password*
+.vault_pass*
+*.pem
+*.p12
+*.pfx
+
+# Obsolete local Vault copy
+Ansible/group_vars/all/vault.yml.broken

@@ -1,0 +1,63 @@
+---
+- name: Base configuration for all servers
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - common
+
+- name: Install PostgreSQL on database servers
+  hosts: database
+  become: true
+  gather_facts: true
+  roles:
+    - postgresql_common
+
+- name: Configure PostgreSQL primary
+  hosts: db_primary
+  become: true
+  gather_facts: true
+  roles:
+    - postgresql_primary
+
+- name: Configure PostgreSQL replica
+  hosts: db_replica
+  become: true
+  gather_facts: true
+  roles:
+    - postgresql_replica
+
+- name: Install MediaWiki application servers
+  hosts: wiki
+  become: true
+  gather_facts: true
+  roles:
+    - mediawiki
+
+- name: Configure MediaWiki
+  hosts: wiki
+  become: true
+  gather_facts: false
+  roles:
+    - mediawiki_config
+
+- name: Configure Nginx load balancer
+  hosts: balancer
+  become: true
+  gather_facts: true
+  roles:
+    - nginx_lb
+
+- name: Configure backup server
+  hosts: backup
+  become: true
+  gather_facts: true
+  roles:
+    - backup
+
+- name: Configure Zabbix monitoring server
+  hosts: monitoring
+  become: true
+  gather_facts: true
+  roles:
+    - zabbix_server

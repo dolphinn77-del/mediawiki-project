@@ -1,0 +1,155 @@
+---
+- name: Verify Zabbix backup monitoring
+  hosts: monitoring
+  gather_facts: false
+
+  vars:
+    api_url: "http://127.0.0.1/api_jsonrpc.php"
+    backup_host: "backup-01"
+    backup_key: "mediawiki.backup.age"
+    backup_trigger: "Резервная копия MediaWiki старше 26 часов"
+
+  tasks:
+    - name: Login to Zabbix API
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+        body:
+          jsonrpc: "2.0"
+          method: user.login
+          params:
+            username: Admin
+            password: "{{ zabbix_admin_password }}"
+          id: 1
+      register: api_login
+      failed_when: api_login.json.error is defined
+      no_log: true
+
+    - name: Save API token
+      ansible.builtin.set_fact:
+        api_token: "{{ api_login.json.result }}"
+      no_log: true
+
+    - name: Find backup host
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: host.get
+          params:
+            output: [hostid, host, status]
+            filter:
+              host: ["{{ backup_host }}"]
+          id: 2
+      register: host_get
+      failed_when: host_get.json.error is defined
+
+    - name: Verify backup host exists
+      ansible.builtin.assert:
+        that:
+          - host_get.json.result | length == 1
+          - host_get.json.result[0].status == "0"
+        success_msg: "Узел backup-01 существует и включён"
+
+    - name: Read backup age item
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: item.get
+          params:
+            output:
+              - itemid
+              - name
+              - key_
+              - lastvalue
+              - lastclock
+              - state
+              - error
+            hostids:
+              - "{{ host_get.json.result[0].hostid }}"
+            filter:
+              key_: ["{{ backup_key }}"]
+          id: 3
+      register: item_get
+      failed_when: item_get.json.error is defined
+
+    - name: Verify backup metric
+      ansible.builtin.assert:
+        that:
+          - item_get.json.result | length == 1
+          - item_get.json.result[0].state == "0"
+          - item_get.json.result[0].error == ""
+          - item_get.json.result[0].lastclock | int > 0
+          - item_get.json.result[0].lastvalue | int >= 0
+        success_msg: >-
+          Метрика работает. Возраст копии:
+          {{ item_get.json.result[0].lastvalue }} секунд
+        fail_msg: "Метрика резервной копии не работает"
+
+    - name: Find backup trigger
+      ansible.builtin.uri:
+        url: "{{ api_url }}"
+        method: POST
+        body_format: json
+        return_content: true
+        headers:
+          Content-Type: application/json-rpc
+          Authorization: "Bearer {{ api_token }}"
+        body:
+          jsonrpc: "2.0"
+          method: trigger.get
+          params:
+            output:
+              - triggerid
+              - description
+              - expression
+              - priority
+              - status
+              - value
+            hostids:
+              - "{{ host_get.json.result[0].hostid }}"
+            filter:
+              description: ["{{ backup_trigger }}"]
+          id: 4
+      register: trigger_get
+      failed_when: trigger_get.json.error is defined
+
+    - name: Verify backup trigger
+      ansible.builtin.assert:
+        that:
+          - trigger_get.json.result | length == 1
+          - trigger_get.json.result[0].status == "0"
+          - trigger_get.json.result[0].priority == "3"
+        success_msg: >-
+          Триггер включён. Текущее состояние:
+          {{ 'ПРОБЛЕМА' if trigger_get.json.result[0].value == '1' else 'НОРМА' }}
+        fail_msg: "Триггер резервной копии отсутствует или отключён"
+
+    - name: Show final monitoring data
+      ansible.builtin.debug:
+        msg:
+          host: "{{ backup_host }}"
+          metric: "{{ backup_key }}"
+          age_seconds: "{{ item_get.json.result[0].lastvalue }}"
+          item_state: "{{ item_get.json.result[0].state }}"
+          trigger_state: >-
+            {{ 'ПРОБЛЕМА'
+               if trigger_get.json.result[0].value == '1'
+               else 'НОРМА' }}
