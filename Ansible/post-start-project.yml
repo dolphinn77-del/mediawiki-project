@@ -1,3 +1,12 @@
 ---
+- name: Wait for all project servers after startup
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait for SSH connection
+      ansible.builtin.wait_for_connection:
+        delay: 2
+        timeout: 180
+
 - import_playbook: update_mediawiki_public_url.yml
 - import_playbook: ensure_recent_backup.yml
