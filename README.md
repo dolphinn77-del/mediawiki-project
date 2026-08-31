@@ -20,9 +20,9 @@ flowchart TD
     U["Пользователь"] --> LB["lb-01: Nginx"]
     LB --> W1["wiki-01: MediaWiki"]
     LB --> W2["wiki-02: MediaWiki"]
-    W1 --> DB1["db-01: PostgreSQL primary"]
+    W1 --> DB1["db-02: PostgreSQL primary"]
     W2 --> DB1
-    DB1 --> DB2["db-02: PostgreSQL replica"]
+    DB1 --> DB2["db-01: PostgreSQL replica"]
     B["backup-01: резервные копии"] --> DB1
     Z["zabbix-01: мониторинг"] --> LB
     Z --> B
@@ -35,8 +35,8 @@ flowchart TD
 | `lb-01` | `10.50.0.10` | Балансировщик Nginx |
 | `wiki-01` | `10.50.0.21` | Первый сервер MediaWiki |
 | `wiki-02` | `10.50.0.22` | Второй сервер MediaWiki |
-| `db-01` | `10.50.0.31` | PostgreSQL primary |
-| `db-02` | `10.50.0.32` | PostgreSQL replica и тест восстановления |
+| `db-01` | `10.50.0.31` | PostgreSQL replica |
+| `db-02` | `10.50.0.32` | PostgreSQL primary и тест восстановления |
 | `backup-01` | `10.50.0.41` | Хранение резервных копий |
 | `zabbix-01` | `10.50.0.51` | Zabbix Server |
 
@@ -53,17 +53,74 @@ Ansible/                    настройка и проверка сервер�
 Ansible/roles/              роли настройки компонентов
 Ansible/tools/              автоматизация и проверка Zabbix
 docs/mediawiki_arch.drawio  исходная схема инфраструктуры
-start-project.sh            полный запуск проекта
+start-project.sh            запуск уже развёрнутого стенда
 start-project-vms.sh        запуск виртуальных машин
 schedule-auto-stop.sh       таймер автоматической остановки
 stop-project.sh             безопасная остановка проекта
 ```
 
+## Предварительные требования
+
+На управляющей машине должны быть установлены:
+
+- Terraform 1.5 или новее;
+- Ansible;
+- Yandex Cloud CLI (`yc`) с настроенным профилем;
+- Git;
+- SSH-ключ Ed25519;
+- доступ к Yandex Cloud.
+
+Установка необходимых коллекций Ansible:
+
+```bash
+ansible-galaxy collection install -r Ansible/requirements.yml
+```
+
+## Первичное развёртывание
+
+Создайте локальные файлы конфигурации:
+
+```bash
+cp Terraform/terraform.tfvars.example Terraform/terraform.tfvars
+cp Ansible/group_vars/all/vault.yml.example Ansible/group_vars/all/vault.yml
+```
+
+В `Terraform/terraform.tfvars` укажите публичный IPv4 управляющей машины в параметре `admin_cidr`.
+
+В `vault.yml` замените значения `CHANGE_ME`, затем зашифруйте файл:
+
+```bash
+ansible-vault encrypt Ansible/group_vars/all/vault.yml
+```
+
+Создайте инфраструктуру:
+
+```bash
+terraform -chdir=Terraform init
+terraform -chdir=Terraform apply
+```
+
+После создания ВМ подготовьте динамические адреса:
+
+```bash
+./start-project-vms.sh
+```
+
+Затем выполните первоначальную настройку серверов:
+
+```bash
+cd Ansible
+ansible-playbook -i inventory.ini --ask-vault-pass playbook.yml
+cd ..
+```
+
+MediaWiki скачивается Ansible автоматически. SSH-ключ для файловых резервных копий создаётся на `backup-01` автоматически.
+
 ## Запуск и остановка
 
 Все команды выполняются из корня проекта.
 
-Полный запуск:
+Запуск уже развёрнутого стенда:
 
 ```bash
 ./start-project.sh
@@ -123,12 +180,12 @@ Zabbix контролирует показатель `mediawiki.backup.age`.
 
 ## Безопасность
 
-- пароли хранятся в зашифрованном Ansible Vault;
-- пароль Vault и закрытые SSH-ключи не входят в репозиторий;
-- состояния Terraform, планы, журналы и временные копии исключены;
+- пароли хранятся в локальном зашифрованном Ansible Vault;
+- реальный `vault.yml`, пароль Vault и закрытые SSH-ключи не входят в репозиторий;
+- в Git хранится только безопасный `vault.yml.example`;
+- `terraform.tfvars`, состояния Terraform, планы, журналы и временные копии исключены;
+- SSH к балансировщику разрешён только из `admin_cidr`;
 - публичные IP назначаются динамически и обновляются при запуске;
-- перед публичной публикацией реальный `vault.yml` следует заменить
-  файлом-примером либо использовать приватный репозиторий.
 
 ## Ограничения
 

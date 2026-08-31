@@ -1,0 +1,7 @@
+# Public IPv4 address of the management node.
+# Replace this example address with your actual IPv4 /32.
+admin_cidr = "203.0.113.10/32"
+
+# Optional overrides:
+# zone = "ru-central1-d"
+# ssh_public_key_path = "~/.ssh/id_ed25519.pub"

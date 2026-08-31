@@ -13,7 +13,6 @@ variable "subnet_cidr" {
 variable "admin_cidr" {
   description = "Public IPv4 address of Ansible/Terraform management node"
   type        = string
-  default     = "178.154.236.120/32"
 }
 
 variable "ssh_user" {

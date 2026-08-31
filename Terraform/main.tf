@@ -57,7 +57,7 @@ resource "yandex_vpc_security_group" "lb_public" {
     protocol       = "TCP"
     description    = "SSH bastion access"
     port           = 22
-    v4_cidr_blocks = ["0.0.0.0/0"]
+    v4_cidr_blocks = [var.admin_cidr]
   }
 }
 

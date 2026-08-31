@@ -20,6 +20,42 @@
     - /srv/backups/postgresql
     - /srv/backups/mediawiki
 
+- name: Ensure root SSH directory exists
+  ansible.builtin.file:
+    path: /root/.ssh
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Generate SSH key for MediaWiki filesystem backups
+  ansible.builtin.command:
+    argv:
+      - ssh-keygen
+      - -t
+      - ed25519
+      - -N
+      - ""
+      - -f
+      - /root/.ssh/id_ed25519
+      - -C
+      - backup-01@mediawiki
+  args:
+    creates: /root/.ssh/id_ed25519
+
+- name: Read backup SSH public key
+  ansible.builtin.slurp:
+    src: /root/.ssh/id_ed25519.pub
+  register: backup_public_key_raw
+
+- name: Authorize backup SSH key on MediaWiki servers
+  ansible.posix.authorized_key:
+    user: ubuntu
+    key: "{{ backup_public_key_raw.content | b64decode | trim }}"
+    state: present
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['wiki'] }}"
+
 - name: Create PostgreSQL password file
   ansible.builtin.copy:
     dest: /root/.pgpass

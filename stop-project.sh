@@ -62,8 +62,8 @@ command -v yc >/dev/null
 
 stop_group wiki-01 wiki-02
 stop_group backup-01 zabbix-01
-stop_group db-02
 stop_group db-01
+stop_group db-02
 stop_group lb-01
 
 yc compute instance list

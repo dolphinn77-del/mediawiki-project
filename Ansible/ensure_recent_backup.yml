@@ -11,7 +11,7 @@
   tasks:
     - name: Wait for primary PostgreSQL
       ansible.builtin.wait_for:
-        host: 10.50.0.31
+        host: "{{ postgres_primary_ip }}"
         port: 5432
         connect_timeout: 5
         timeout: 90

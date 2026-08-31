@@ -109,8 +109,8 @@ sed -i -E \
 
 printf 'Ansible обновлён: lb-01 = %s\n' "$lb_public_ip"
 
-start_group db-01
 start_group db-02
+start_group db-01
 start_group wiki-01 wiki-02 backup-01 zabbix-01
 
 zabbix_public_ip="$(vm_external_ip zabbix-01)"

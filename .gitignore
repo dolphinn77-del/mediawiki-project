@@ -68,3 +68,6 @@ vault-password*
 
 # Obsolete local Vault copy
 Ansible/group_vars/all/vault.yml.broken
+
+# Local Ansible Vault secrets
+Ansible/group_vars/all/vault.yml

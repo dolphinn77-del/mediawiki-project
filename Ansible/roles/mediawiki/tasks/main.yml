@@ -16,10 +16,11 @@
     state: present
     update_cache: true
 
-- name: Remove broken remote MediaWiki archive
-  ansible.builtin.file:
-    path: "/tmp/mediawiki-{{ mediawiki_version }}.tar.gz"
-    state: absent
+- name: Download MediaWiki archive
+  ansible.builtin.get_url:
+    url: "https://releases.wikimedia.org/mediawiki/{{ mediawiki_release_series }}/mediawiki-{{ mediawiki_version }}.tar.gz"
+    dest: "/tmp/mediawiki-{{ mediawiki_version }}.tar.gz"
+    mode: "0644"
 
 - name: Create MediaWiki directory
   ansible.builtin.file:
@@ -29,10 +30,11 @@
     group: www-data
     mode: "0755"
 
-- name: Extract MediaWiki archive from Ansible controller
+- name: Extract MediaWiki archive
   ansible.builtin.unarchive:
-    src: "mediawiki-{{ mediawiki_version }}.tar.gz"
+    src: "/tmp/mediawiki-{{ mediawiki_version }}.tar.gz"
     dest: "{{ mediawiki_root }}"
+    remote_src: true
     extra_opts:
       - "--strip-components=1"
     creates: "{{ mediawiki_root }}/index.php"
@@ -80,9 +82,3 @@
     name: nginx
     state: started
     enabled: true
-
-- name: Allow backup server SSH key
-  ansible.posix.authorized_key:
-    user: ubuntu
-    key: "{{ backup_ssh_public_key }}"
-    state: present
